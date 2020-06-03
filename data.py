@@ -2,20 +2,21 @@ from __future__ import print_function
 
 import glob
 import os
+import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 import skimage.io as io
 import skimage.transform as trans
-from PIL.Image import Image
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
 Land = [221, 250, 244]
 Water = [221, 199, 220]
 Ship = [114, 119, 232]
+Uncategorised = [0, 0, 0]
 
-COLOR_DICT = np.array([Land, Water, Ship])
+COLOR_DICT = {"land": Land, "water": Water, "ship": Ship}
 
 
 def rgba2rgb(rgba, background=(255, 255, 255)):
@@ -40,54 +41,111 @@ def rgba2rgb(rgba, background=(255, 255, 255)):
     return np.asarray(rgb, dtype='uint8')
 
 
-def show_image(w, h):
-    data = np.zeros((h, w, 3), dtype=np.uint8)
-    data[0:256, 0:256] = [255, 0, 0]  # red patch in upper left
-    img = Image.fromarray(data, 'RGB')
-    img.save('my.png')
-    img.show()
+def show_image(img):
+    plt.imshow(img[0] / 255)
+    plt.show()
 
 
-def adjustData(img, mask, flag_multi_class, num_class):
-    if (flag_multi_class):
-        ## TODO :: Work here needs to be done!
-        # plt.imshow(mask[0] / 255)
-        # plt.show()
-        img = img / 255
-        # mask = mask[:, :, :, 0] if (len(mask.shape) == 4) else mask[:, :, 0]
-        new_mask = np.zeros((mask.shape[0], mask.shape[1], mask.shape[2], num_class))
-        for i in range(num_class):
-            # foreach pixel in the mask, find the class in mask and convert it into one-hot vector
-            index = np.where(
-                np.logical_and(  # All R G and B have to be true
-                    np.logical_and(
-                        mask[:, :, :, 0] == COLOR_DICT[i][0],
-                        mask[:, :, :, 1] == COLOR_DICT[i][1]
-                    ),
-                    mask[:, :, :, 2] == COLOR_DICT[i][2]))
+def validate_categories(list_of_categories):
+    if list_of_categories is None:
+        return False
+    for category in list_of_categories:
+        if category.lower() not in COLOR_DICT:
+            return False
+    return True
 
-            index_mask = (index[0], index[1], index[2], np.zeros(len(index[0]), dtype=np.int64) + i) if (
-                    len(mask.shape) == 4) else (index[0], index[1], np.zeros(len(index[0]), dtype=np.int64) + i)
-            new_mask[index_mask] = 1
 
+def fill_new_mask_empty_spaces(new_mask):
+    # Implement this if you need it:
+    pass
+
+
+def adjustData(img, mask, list_of_categories):
+    # Validate input:
+    if not validate_categories(list_of_categories):
+        sys.exit("The list of classes is not valid: " + str(list_of_categories) +
+                 ", valid classes are: " + str(COLOR_DICT.keys()))
+    # show_image(mask)
+    img = img / 255
+    if len(list_of_categories) == 1:  # Binary:
+        color = COLOR_DICT[list_of_categories[0].lower()]
+        new_mask = np.zeros((mask.shape[0], mask.shape[1], mask.shape[2]))
+        new_mask[
+            np.logical_and(  # All R, G and B have to be true
+                np.logical_and(
+                    mask[:, :, :, 0] == color[0],
+                    mask[:, :, :, 1] == color[1]
+                ),
+                mask[:, :, :, 2] == color[2])
+        ] = 1
+        mask = new_mask
+    elif len(list_of_categories) == len(COLOR_DICT):  # All classes are check so no uncategorised:
+        new_mask = np.zeros((mask.shape[0], mask.shape[1], mask.shape[2], len(list_of_categories)))
+        new_mask = fill_new_mask(mask, new_mask, list_of_categories)
+        mask = new_mask
+    else:
+        new_mask = np.zeros((mask.shape[0], mask.shape[1], mask.shape[2], len(list_of_categories) + 1))
+        new_mask = fill_new_mask(mask, new_mask, list_of_categories)
+        new_mask = fill_new_mask_empty_spaces(new_mask)
         mask = new_mask
 
-    elif np.max(img) > 1:
-        img = img / 255
-        mask = mask / 255
-        mask[mask > 0.5] = 1
-        mask[mask <= 0.5] = 0
     return (img, mask)
+
+
+def fill_new_mask(mask, new_mask, list_of_categories):
+    for i, category in enumerate(list_of_categories):
+        # foreach pixel in the mask, find the class in mask and convert it into one-hot vector
+        index = np.where(
+            np.logical_and(  # All R, G and B have to be true
+                np.logical_and(
+                    mask[:, :, :, 0] == COLOR_DICT[category][0],
+                    mask[:, :, :, 1] == COLOR_DICT[category][1]
+                ),
+                mask[:, :, :, 2] == COLOR_DICT[category][2])
+        )
+        index_mask = (index[0], index[1], index[2], np.zeros(len(index[0]), dtype=np.int64) + i) if (
+                len(mask.shape) == 4) else (index[0], index[1], np.zeros(len(index[0]), dtype=np.int64) + i)
+        new_mask[index_mask] = 1
+        return new_mask
+
+
+# def adjustData_legacy(img, mask, flag_multi_class, num_class):
+#     if (flag_multi_class):
+#         img = img / 255
+#         new_mask = np.zeros((mask.shape[0], mask.shape[1], mask.shape[2], num_class))
+#         for i in range(num_class):
+#             # foreach pixel in the mask, find the class in mask and convert it into one-hot vector
+#             index = np.where(
+#                 np.logical_and(  # All R G and B have to be true
+#                     np.logical_and(
+#                         mask[:, :, :, 0] == COLOR_DICT[i][0],
+#                         mask[:, :, :, 1] == COLOR_DICT[i][1]
+#                     ),
+#                     mask[:, :, :, 2] == COLOR_DICT[i][2]))
+#             index_mask = (index[0], index[1], index[2], np.zeros(len(index[0]), dtype=np.int64) + i) if (
+#                     len(mask.shape) == 4) else (index[0], index[1], np.zeros(len(index[0]), dtype=np.int64) + i)
+#             new_mask[index_mask] = 1
+#
+#         mask = new_mask
+#
+#     elif np.max(img) > 1:
+#         img = img / 255
+#         mask = mask / 255
+#         mask[mask > 0.5] = 1
+#         mask[mask <= 0.5] = 0
+#     return (img, mask)
 
 
 def trainGenerator(batch_size, train_path, image_folder, mask_folder, aug_dict, image_color_mode="grayscale",
                    mask_color_mode="grayscale", image_save_prefix="image", mask_save_prefix="mask",
-                   flag_multi_class=False, num_class=2, save_to_dir=None, target_size=(256, 256), seed=1):
+                   list_of_categories=None, save_to_dir=None, target_size=(256, 256), seed=1):
     '''
     can generate image and mask at the same time
     use the same seed for image_datagen and mask_datagen to ensure the transformation for image and mask is the same
     if you want to visualize the results of generator, set save_to_dir = "your path"
     '''
+    if list_of_categories is None:
+        list_of_categories = []
     image_datagen = ImageDataGenerator(**aug_dict)
     mask_datagen = ImageDataGenerator(**aug_dict)
     image_generator = image_datagen.flow_from_directory(
@@ -112,7 +170,7 @@ def trainGenerator(batch_size, train_path, image_folder, mask_folder, aug_dict, 
         seed=seed)
     train_generator = zip(image_generator, mask_generator)
     for (img, mask) in train_generator:
-        img, mask = adjustData(img, mask, flag_multi_class, num_class)
+        img, mask = adjustData(img, mask, list_of_categories)
         yield (img, mask)
 
 
@@ -124,7 +182,7 @@ def testGenerator(test_path_str, num_image=0, target_size=(256, 256), flag_multi
         img = rgba2rgb(img)
         img = img / 255.
         img = trans.resize(img, target_size)
-        img = np.reshape(img, img.shape + (1,)) if (not flag_multi_class) else img
+        # img = np.reshape(img, img.shape + (1,)) if (not flag_multi_class) else img
         img = np.reshape(img, (1,) + img.shape)
         yield img
 
@@ -160,16 +218,27 @@ def labelVisualize(num_class, color_dict, img):
     return img_out
 
 
-def predictionToMask(color_dict, img):
+def predictionToMask(list_of_categories, img):
     img = np.argmax(img, axis=2) if len(img.shape) == 3 else img
     img_out = np.zeros(img.shape + (3,))
-    for i, rgb in enumerate(color_dict):
-        img_out[img == i] = rgb
+    if len(list_of_categories) > 1:
+        for i, category in enumerate(list_of_categories):
+            img_out[img == i] = COLOR_DICT[category]
+    else:
+        img_out[img == 1] = COLOR_DICT[list_of_categories[0]]
     return img_out
 
 
-def saveResult(save_path, npyfile, flag_multi_class=False, num_class=2):
+def saveResult(save_path, npyfile, list_of_categories):
     for i, item in enumerate(npyfile):
-        img = predictionToMask(COLOR_DICT, item) if flag_multi_class else item[:, :, 0]
+        img = predictionToMask(list_of_categories, item)
         img_uint8 = img.astype(np.uint8)
         io.imsave(os.path.join(save_path, "%d_predict.png" % i), img_uint8)
+
+
+if __name__ == '__main__':
+    # Test validate classes
+    loc = ["land", "water"]
+    assert validate_categories(loc)
+    loc.append("pig")
+    assert not validate_categories(loc)

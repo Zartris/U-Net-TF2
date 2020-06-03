@@ -9,20 +9,12 @@ from tensorflow.keras.layers import MaxPooling2D
 from tensorflow.keras.layers import concatenate
 from tensorflow.keras.models import Model
 
-# Set some parameters
-IMG_WIDTH = 128
-IMG_HEIGHT = 128
-IMG_CHANNELS = 3
-TRAIN_PATH = '../input/stage1_train/'
-TEST_PATH = '../input/stage1_test/'
-FINAL_TEST_PATH = '../input/stage2_test_final/'
-
 
 class UNet(Model):
     def __init__(self, nclasses=1):
         super(UNet, self).__init__()
         # Build U-Net model
-        self.prepare = Lambda(lambda x: x / 255)
+        # self.prepare = Lambda(lambda x: x / 255)
 
         self.block1 = Sequential([
             Conv2D(64, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same'),
@@ -108,10 +100,10 @@ class UNet(Model):
 
     def call(self, inputs, training=False, **kwargs):
         # Preparing input:
-        prep_inputs = self.prepare(inputs)
+        # prep_inputs = self.prepare(inputs)
         # Going down the U
 
-        block1 = self.block1(prep_inputs)
+        block1 = self.block1(inputs)
         block2 = self.block2(block1)
         block3 = self.block3(block2)
         block4 = self.block4(block3)
@@ -129,11 +121,11 @@ class UNet(Model):
         return output
 
 
-class UNetSmall(Model):
-    def __init__(self, nclasses=1):
-        super(UNetSmall, self).__init__()
+class UNetBinary(Model):
+    def __init__(self):
+        super(UNetBinary, self).__init__()
         # Build U-Net model
-        self.prepare = Lambda(lambda x: x / 255)
+        # self.prepare = Lambda(lambda x: x / 255)
 
         self.block1 = Sequential([
             Conv2D(64, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same'),
@@ -214,15 +206,16 @@ class UNetSmall(Model):
             Dropout(0.1),
             Conv2D(64, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same'),
             BatchNormalization(),
-            Conv2D(nclasses, (1, 1), activation='softmax')
+            Conv2D(2, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same'),
+            Conv2D(1, (1, 1), activation='sigmoid')
         ])
 
     def call(self, inputs, training=False, **kwargs):
         # Preparing input:
-        prep_inputs = self.prepare(inputs)
+        # prep_inputs = self.prepare(inputs)
         # Going down the U
 
-        block1 = self.block1(prep_inputs)
+        block1 = self.block1(inputs)
         block2 = self.block2(block1)
         block3 = self.block3(block2)
         block4 = self.block4(block3)
