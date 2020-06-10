@@ -6,28 +6,12 @@ from tensorflow.python.keras.callbacks import ModelCheckpoint
 
 from data import *
 
+import tensorflow as tf
 
-def rm_tree(pth):
-    pth = Path(pth)
-    for child in pth.glob('*'):
-        if child.is_file():
-            child.unlink()
-        else:
-            rm_tree(child)
-    pth.rmdir()
+from utils.tensorboard import ModelDiagonoser
 
 
-def setup_gpus():
-    gpus = tf.config.experimental.list_physical_devices('GPU')
-    if gpus:
-        try:
-            for gpu in gpus:
-                tf.config.experimental.set_memory_growth(gpu, True)
-        except RuntimeError as e:
-            print(e)
-
-
-def generate_callbacks(checkpoint_path: Path, tensorboard_path: Path):
+def generate_callbacks(checkpoint_path: Path, tensorboard_path: Path, trainGene):
     early_stopping_callback = tf.keras.callbacks.EarlyStopping(monitor='loss', patience=3)
     log_dir = Path(tensorboard_path, "fit", datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
     tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=str(log_dir), histogram_freq=1)
@@ -35,6 +19,7 @@ def generate_callbacks(checkpoint_path: Path, tensorboard_path: Path):
                                           monitor='loss',
                                           verbose=1,
                                           save_best_only=True)
+    # tensorboard_img_callback = ModelDiagonoser(trainGene, 1, 10, tensorboard_path, 1)
     return [save_model_callback, tensorboard_callback, early_stopping_callback]
 
 
@@ -48,8 +33,6 @@ def train_model(model: Model,
                 train_folder: Path,
                 checkpoint_path: Path,
                 tensorboard_path: Path):
-    # Callbacks:
-    callbacks = generate_callbacks(checkpoint_path, tensorboard_path)
     data_gen_args = dict(rotation_range=90,
                          width_shift_range=0.05,
                          height_shift_range=0.05,
@@ -70,6 +53,10 @@ def train_model(model: Model,
                                list_of_categories=list_of_categories,
                                save_to_dir=None,
                                target_size=target_size)
+
+    # Callbacks:
+    callbacks = generate_callbacks(checkpoint_path, tensorboard_path, trainGene)
+
     model.fit(x=trainGene,
               batch_size=batch_size,
               steps_per_epoch=steps_per_epoch,
@@ -96,6 +83,7 @@ def test_model(model: Model,
                             verbose=1)
 
     saveResult(save_path=str(result_folder),
+               test_path_str=str(Path(test_folder, "images_sorted/images")),
                npyfile=results,
                list_of_categories=list_of_categories)
 

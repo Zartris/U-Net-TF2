@@ -206,7 +206,7 @@ class UNetBinary(Model):
             Dropout(0.1),
             Conv2D(64, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same'),
             BatchNormalization(),
-            Conv2D(2, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same'),
+            # Conv2D(2, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same'),
             Conv2D(1, (1, 1), activation='sigmoid')
         ])
 

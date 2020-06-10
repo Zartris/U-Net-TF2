@@ -73,6 +73,8 @@ if __name__ == '__main__':
                         default="")  # If should load model: if "" don't load anything
     parser.add_argument("--eval",
                         action='store_true')  # If we only want to evaluate a model.
+    parser.add_argument("--cpu",
+                        action='store_true')  # If we only want to evaluate a model.
     args = parser.parse_args()
 
     # Hard-coded values
@@ -81,8 +83,8 @@ if __name__ == '__main__':
     nclasses = len(categories)
     validation_split = 0.2
 
-    input_shape = (args.batch_size, args.image_width, args.image_height, args.image_channels)
-    target_size = (args.image_width, args.image_height)
+    input_shape = (args.batch_size, args.image_height, args.image_width, args.image_channels)
+    target_size = (args.image_height, args.image_width)
 
     as_gray = args.image_channels == 1
     model_name = 'unet' + "_" + str(args.image_width) + "_" + str(args.image_height) + '_binary.hdf5'
@@ -106,8 +108,10 @@ if __name__ == '__main__':
         checkpoint_dir.mkdir(parents=True)
 
     # Choose an optimizer and loss function for training:
-    loss_object = tf.keras.losses.BinaryCrossentropy()
-    optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)
+    # loss_object = tf.keras.losses.BinaryCrossentropy()
+    # optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)
+    loss_object = tf.keras.losses.MeanSquaredError()
+    optimizer = tf.keras.optimizers.RMSprop(learning_rate=args.lr)
 
     # Create model:
     model = UNetBinary()
@@ -127,22 +131,44 @@ if __name__ == '__main__':
         print("Loading old weights from:", str(checkpoint_path))
         model.load_weights(str(checkpoint_path))
 
-    if not args.eval:  # Training
-        model = train_model(model=model,
-                            target_size=target_size,
-                            batch_size=args.batch_size,
-                            list_of_categories=categories,
-                            train_epoch=args.epochs,
-                            steps_per_epoch=args.steps_per_epoch,
-                            validation_split=validation_split,
-                            train_folder=train_folder,
-                            checkpoint_path=checkpoint_path,
-                            tensorboard_path=tensorboard_path)
-    # else just eval
-    test_model(model=model,
-               target_size=target_size,
-               batch_size=args.batch_size,
-               list_of_categories=categories,
-               as_gray=as_gray,
-               test_folder=test_folder,
-               result_folder=result_folder)
+    if args.cpu:
+        with tf.device('/cpu:0'):
+            if not args.eval:  # Training
+                model = train_model(model=model,
+                                    target_size=target_size,
+                                    batch_size=args.batch_size,
+                                    list_of_categories=categories,
+                                    train_epoch=args.epochs,
+                                    steps_per_epoch=args.steps_per_epoch,
+                                    validation_split=validation_split,
+                                    train_folder=train_folder,
+                                    checkpoint_path=checkpoint_path,
+                                    tensorboard_path=tensorboard_path)
+            # else just eval
+            test_model(model=model,
+                       target_size=target_size,
+                       batch_size=args.batch_size,
+                       list_of_categories=categories,
+                       as_gray=as_gray,
+                       test_folder=test_folder,
+                       result_folder=result_folder)
+    else:
+        if not args.eval:  # Training
+            model = train_model(model=model,
+                                target_size=target_size,
+                                batch_size=args.batch_size,
+                                list_of_categories=categories,
+                                train_epoch=args.epochs,
+                                steps_per_epoch=args.steps_per_epoch,
+                                validation_split=validation_split,
+                                train_folder=train_folder,
+                                checkpoint_path=checkpoint_path,
+                                tensorboard_path=tensorboard_path)
+        # else just eval
+        test_model(model=model,
+                   target_size=target_size,
+                   batch_size=args.batch_size,
+                   list_of_categories=categories,
+                   as_gray=as_gray,
+                   test_folder=test_folder,
+                   result_folder=result_folder)

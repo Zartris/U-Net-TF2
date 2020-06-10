@@ -4,6 +4,7 @@ import glob
 import os
 import sys
 from pathlib import Path
+import cv2
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -78,7 +79,7 @@ def adjustData(img, mask, list_of_categories):
                 ),
                 mask[:, :, :, 2] == color[2])
         ] = 1
-        mask = new_mask
+        mask = np.array(new_mask)
     elif len(list_of_categories) == len(COLOR_DICT):  # All classes are check so no uncategorised:
         new_mask = np.zeros((mask.shape[0], mask.shape[1], mask.shape[2], len(list_of_categories)))
         new_mask = fill_new_mask(mask, new_mask, list_of_categories)
@@ -177,7 +178,11 @@ def trainGenerator(batch_size, train_path, image_folder, mask_folder, aug_dict, 
 def testGenerator(test_path_str, num_image=0, target_size=(256, 256), flag_multi_class=False, as_gray=True):
     test_path = Path(test_path_str)
     counter = 0
+    test_images = []
     for png in test_path.glob("*.png"):
+        test_images.append(png)
+    test_images.sort()
+    for png in test_images:
         img = io.imread(str(png), as_gray=as_gray)
         img = rgba2rgb(img)
         img = img / 255.
@@ -219,21 +224,40 @@ def labelVisualize(num_class, color_dict, img):
 
 
 def predictionToMask(list_of_categories, img):
-    img = np.argmax(img, axis=2) if len(img.shape) == 3 else img
-    img_out = np.zeros(img.shape + (3,))
+    # img = np.argmax(img, axis=2) if len(img.shape) == 3 else img
     if len(list_of_categories) > 1:
+        img = np.argmax(img, axis=2)
+        img_out = np.zeros((img.shape[0], img.shape[1], 3))
         for i, category in enumerate(list_of_categories):
             img_out[img == i] = COLOR_DICT[category]
     else:
-        img_out[img == 1] = COLOR_DICT[list_of_categories[0]]
+        img_out = np.zeros(img.shape)
+        img_out[img > 0.5] = 1
     return img_out
 
 
-def saveResult(save_path, npyfile, list_of_categories):
+def saveResult(save_path, test_path_str, npyfile, list_of_categories):
+    original_images = []
+    for png in Path(test_path_str).glob("*.png"):
+        original_images.append(png)
+    original_images.sort()
     for i, item in enumerate(npyfile):
+        org_path = original_images[i]
+        org_image = io.imread(str(org_path), as_gray=True)
+        org_image = trans.resize(org_image, item.shape)
+        new_img = np.zeros((item.shape[0], item.shape[1] * 3, item.shape[2]))
         img = predictionToMask(list_of_categories, item)
+        img = img * 255
+        img_item = item * 255
+        org_image = org_image * 255
         img_uint8 = img.astype(np.uint8)
-        io.imsave(os.path.join(save_path, "%d_predict.png" % i), img_uint8)
+        img_item_uint8 = img_item.astype(np.uint8)
+        # new_img = np.concatenate(np.concatenate((org_image, img, ), axis=1), img_item, axis=1)
+        new_img = cv2.hconcat([org_image, img])
+        new_img = new_img.astype(np.uint8)
+        # io.imsave(os.path.join(save_path, "%d_predict_threshold.png" % i), img_uint8)
+        io.imsave(os.path.join(save_path, "%d_predict_grayscale.png" % i), img_item_uint8)
+        io.imsave(os.path.join(save_path, "%d_predict_all.png" % i), new_img)
 
 
 if __name__ == '__main__':
