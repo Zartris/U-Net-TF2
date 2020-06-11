@@ -108,10 +108,10 @@ if __name__ == '__main__':
         checkpoint_dir.mkdir(parents=True)
 
     # Choose an optimizer and loss function for training:
-    # loss_object = tf.keras.losses.BinaryCrossentropy()
-    # optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)
-    loss_object = tf.keras.losses.MeanSquaredError()
-    optimizer = tf.keras.optimizers.RMSprop(learning_rate=args.lr)
+    loss_object = tf.keras.losses.BinaryCrossentropy()
+    optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)
+    # loss_object = tf.keras.losses.MeanSquaredError()
+    # optimizer = tf.keras.optimizers.RMSprop(learning_rate=args.lr)
 
     # Create model:
     model = UNetBinary()

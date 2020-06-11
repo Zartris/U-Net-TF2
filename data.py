@@ -13,7 +13,7 @@ import skimage.transform as trans
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
 Land = [221, 250, 244]
-Water = [221, 199, 220]
+Water = [173, 141, 224]
 Ship = [114, 119, 232]
 Uncategorised = [0, 0, 0]
 
@@ -42,8 +42,11 @@ def rgba2rgb(rgba, background=(255, 255, 255)):
     return np.asarray(rgb, dtype='uint8')
 
 
-def show_image(img):
-    plt.imshow(img[0] / 255)
+def show_image(img, int_to_float=False):
+    if int_to_float:
+        plt.imshow(img[0] / 255)
+    else:
+        plt.imshow(img[0])
     plt.show()
 
 
@@ -67,7 +70,7 @@ def adjustData(img, mask, list_of_categories):
         sys.exit("The list of classes is not valid: " + str(list_of_categories) +
                  ", valid classes are: " + str(COLOR_DICT.keys()))
     # show_image(mask)
-    img = img / 255
+    img = img  # /255.
     if len(list_of_categories) == 1:  # Binary:
         color = COLOR_DICT[list_of_categories[0].lower()]
         new_mask = np.zeros((mask.shape[0], mask.shape[1], mask.shape[2]))
@@ -89,7 +92,6 @@ def adjustData(img, mask, list_of_categories):
         new_mask = fill_new_mask(mask, new_mask, list_of_categories)
         new_mask = fill_new_mask_empty_spaces(new_mask)
         mask = new_mask
-
     return (img, mask)
 
 
@@ -108,33 +110,6 @@ def fill_new_mask(mask, new_mask, list_of_categories):
                 len(mask.shape) == 4) else (index[0], index[1], np.zeros(len(index[0]), dtype=np.int64) + i)
         new_mask[index_mask] = 1
         return new_mask
-
-
-# def adjustData_legacy(img, mask, flag_multi_class, num_class):
-#     if (flag_multi_class):
-#         img = img / 255
-#         new_mask = np.zeros((mask.shape[0], mask.shape[1], mask.shape[2], num_class))
-#         for i in range(num_class):
-#             # foreach pixel in the mask, find the class in mask and convert it into one-hot vector
-#             index = np.where(
-#                 np.logical_and(  # All R G and B have to be true
-#                     np.logical_and(
-#                         mask[:, :, :, 0] == COLOR_DICT[i][0],
-#                         mask[:, :, :, 1] == COLOR_DICT[i][1]
-#                     ),
-#                     mask[:, :, :, 2] == COLOR_DICT[i][2]))
-#             index_mask = (index[0], index[1], index[2], np.zeros(len(index[0]), dtype=np.int64) + i) if (
-#                     len(mask.shape) == 4) else (index[0], index[1], np.zeros(len(index[0]), dtype=np.int64) + i)
-#             new_mask[index_mask] = 1
-#
-#         mask = new_mask
-#
-#     elif np.max(img) > 1:
-#         img = img / 255
-#         mask = mask / 255
-#         mask[mask > 0.5] = 1
-#         mask[mask <= 0.5] = 0
-#     return (img, mask)
 
 
 def trainGenerator(batch_size, train_path, image_folder, mask_folder, aug_dict, image_color_mode="grayscale",
@@ -185,7 +160,7 @@ def testGenerator(test_path_str, num_image=0, target_size=(256, 256), flag_multi
     for png in test_images:
         img = io.imread(str(png), as_gray=as_gray)
         img = rgba2rgb(img)
-        img = img / 255.
+        img = img  # / 255.
         img = trans.resize(img, target_size)
         # img = np.reshape(img, img.shape + (1,)) if (not flag_multi_class) else img
         img = np.reshape(img, (1,) + img.shape)
@@ -245,7 +220,7 @@ def saveResult(save_path, test_path_str, npyfile, list_of_categories):
         org_path = original_images[i]
         org_image = io.imread(str(org_path), as_gray=True)
         org_image = trans.resize(org_image, item.shape)
-        new_img = np.zeros((item.shape[0], item.shape[1] * 3, item.shape[2]))
+        item = cv2.blur(item, (20, 20))
         img = predictionToMask(list_of_categories, item)
         img = img * 255
         img_item = item * 255
