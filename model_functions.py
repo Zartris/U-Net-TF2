@@ -6,10 +6,6 @@ from tensorflow.python.keras.callbacks import ModelCheckpoint
 
 from data import *
 
-import tensorflow as tf
-
-from utils.tensorboard import ModelDiagonoser
-
 
 def generate_callbacks(checkpoint_path: Path, tensorboard_path: Path, trainGene):
     early_stopping_callback = tf.keras.callbacks.EarlyStopping(monitor='loss', patience=3)
@@ -32,7 +28,8 @@ def train_model(model: Model,
                 validation_split: float,
                 train_folder: Path,
                 checkpoint_path: Path,
-                tensorboard_path: Path):
+                tensorboard_path: Path,
+                as_gray=False):
     data_gen_args = dict(rotation_range=90,
                          width_shift_range=0.05,
                          height_shift_range=0.05,
@@ -40,16 +37,15 @@ def train_model(model: Model,
                          zoom_range=0.05,
                          horizontal_flip=True,
                          vertical_flip=True,
-                         fill_mode='nearest',
-                         validation_split=validation_split)
+                         fill_mode='nearest')
 
     trainGene = trainGenerator(batch_size=batch_size,
                                train_path=str(Path(train_folder, "images_sorted")),
                                image_folder='images',
                                mask_folder='label',
                                aug_dict=data_gen_args,
-                               image_color_mode="rgb",
-                               mask_color_mode='rgb',
+                               image_color_mode="rgb" if not as_gray else "grayscale",
+                               mask_color_mode="rgb",
                                list_of_categories=list_of_categories,
                                save_to_dir=None,
                                target_size=target_size)

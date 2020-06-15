@@ -125,7 +125,7 @@ class UNetBinary(Model):
     def __init__(self):
         super(UNetBinary, self).__init__()
         # Build U-Net model
-        # self.prepare = Lambda(lambda x: x / 255)
+        self.prepare = Lambda(lambda x: x / 255)
 
         self.block1 = Sequential([
             Conv2D(64, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same'),
@@ -213,8 +213,9 @@ class UNetBinary(Model):
     def call(self, inputs, training=False, **kwargs):
         # Preparing input:
         # prep_inputs = self.prepare(inputs)
-        # Going down the U
+        inputs = self.prepare(inputs)
 
+        # Going down the U
         block1 = self.block1(inputs)
         block2 = self.block2(block1)
         block3 = self.block3(block2)

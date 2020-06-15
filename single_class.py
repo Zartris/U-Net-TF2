@@ -30,6 +30,7 @@ def setup_gpus():
 if __name__ == '__main__':
     # Note to aspect ratio : You want to keep aspect ratio of 4:3. And your network wants to divide it to 2 for a while.
     # So 4*2*2*2*2*2*2*2 = 512, 3*2*2*2*2*2*2*2=384
+    # Mine is 16/9 ratio: 16*2*2*2*2*2*2=1024  9*2*2*2*2*2*2 = 576
 
     # Setting up gpu's
     setup_gpus()
@@ -49,13 +50,13 @@ if __name__ == '__main__':
                         default=4,
                         type=int)  # Batch size for training
     parser.add_argument("--image_width",
-                        default=512,
+                        default=16 * 2 * 2 * 2 * 2 * 2,
                         type=int,
                         help="Your network wants to divide it to 2 for a while.\\"
                              "So a tip is to find the aspect ration you need and mulitply until you have a sufficient width\\"
                              "example: So 4*2*2*2*2*2*2*2 = 512, 3*2*2*2*2*2*2*2=384")  # image width
     parser.add_argument("--image_height",
-                        default=384,
+                        default=9 * 2 * 2 * 2 * 2 * 2,
                         type=int,
                         help="Your network wants to divide it to 2 for a while.\\"
                              "So a tip is to find the aspect ration you need and mulitply until you have a sufficient height\\"
@@ -65,7 +66,7 @@ if __name__ == '__main__':
                         type=int,
                         help="1= grayscale, 3=rgb, 4=rgba")  # image channels
     parser.add_argument("--lr",
-                        default=2e-5,
+                        default=1e-4,
                         type=float)  # Learning rate
     parser.add_argument("--weight_decay",
                         default=1e-6)  # weight_decay
@@ -87,7 +88,10 @@ if __name__ == '__main__':
     target_size = (args.image_height, args.image_width)
 
     as_gray = args.image_channels == 1
-    model_name = 'unet' + "_" + str(args.image_width) + "_" + str(args.image_height) + '_binary.hdf5'
+    if as_gray:
+        model_name = 'unet' + "_" + str(args.image_width) + "_" + str(args.image_height) + '_grayscale_binary.hdf5'
+    else:
+        model_name = 'unet' + "_" + str(args.image_width) + "_" + str(args.image_height) + '_rgb_binary.hdf5'
 
     # DATA PATH
     current_dir = os.getcwd()
@@ -108,7 +112,7 @@ if __name__ == '__main__':
         checkpoint_dir.mkdir(parents=True)
 
     # Choose an optimizer and loss function for training:
-    loss_object = tf.keras.losses.BinaryCrossentropy()
+    loss_object = tf.keras.losses.BinaryCrossentropy(label_smoothing=0.1)
     optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)
     # loss_object = tf.keras.losses.MeanSquaredError()
     # optimizer = tf.keras.optimizers.RMSprop(learning_rate=args.lr)
@@ -143,7 +147,8 @@ if __name__ == '__main__':
                                     validation_split=validation_split,
                                     train_folder=train_folder,
                                     checkpoint_path=checkpoint_path,
-                                    tensorboard_path=tensorboard_path)
+                                    tensorboard_path=tensorboard_path,
+                                    as_gray=as_gray)
             # else just eval
             test_model(model=model,
                        target_size=target_size,
@@ -163,7 +168,8 @@ if __name__ == '__main__':
                                 validation_split=validation_split,
                                 train_folder=train_folder,
                                 checkpoint_path=checkpoint_path,
-                                tensorboard_path=tensorboard_path)
+                                tensorboard_path=tensorboard_path,
+                                as_gray=as_gray)
         # else just eval
         test_model(model=model,
                    target_size=target_size,

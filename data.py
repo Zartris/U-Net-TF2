@@ -20,7 +20,7 @@ Uncategorised = [0, 0, 0]
 COLOR_DICT = {"land": Land, "water": Water, "ship": Ship}
 
 
-def rgba2rgb(rgba, background=(255, 255, 255)):
+def rgba2rgb(rgba, background=(255, 255, 255), to_int=True):
     row, col, ch = rgba.shape
 
     if ch == 3:
@@ -34,19 +34,24 @@ def rgba2rgb(rgba, background=(255, 255, 255)):
     a = np.asarray(a, dtype='float32') / 255.0
 
     R, G, B = background
-
-    rgb[:, :, 0] = r * a + (1.0 - a) * R
-    rgb[:, :, 1] = g * a + (1.0 - a) * G
-    rgb[:, :, 2] = b * a + (1.0 - a) * B
-
+    if to_int:
+        rgb[:, :, 0] = r
+        rgb[:, :, 1] = g
+        rgb[:, :, 2] = b
+    else:
+        rgb[:, :, 0] = r * a + (1.0 - a) * R
+        rgb[:, :, 1] = g * a + (1.0 - a) * G
+        rgb[:, :, 2] = b * a + (1.0 - a) * B
     return np.asarray(rgb, dtype='uint8')
 
 
-def show_image(img, int_to_float=False):
+def show_image(img, int_to_float=False, batched=True):
+    if batched:
+        img = img[0]
     if int_to_float:
-        plt.imshow(img[0] / 255)
+        plt.imshow(img / 255)
     else:
-        plt.imshow(img[0])
+        plt.imshow(img)
     plt.show()
 
 
@@ -70,7 +75,8 @@ def adjustData(img, mask, list_of_categories):
         sys.exit("The list of classes is not valid: " + str(list_of_categories) +
                  ", valid classes are: " + str(COLOR_DICT.keys()))
     # show_image(mask)
-    img = img  # /255.
+    # img = img  # /255.
+
     if len(list_of_categories) == 1:  # Binary:
         color = COLOR_DICT[list_of_categories[0].lower()]
         new_mask = np.zeros((mask.shape[0], mask.shape[1], mask.shape[2]))
@@ -147,6 +153,8 @@ def trainGenerator(batch_size, train_path, image_folder, mask_folder, aug_dict, 
     train_generator = zip(image_generator, mask_generator)
     for (img, mask) in train_generator:
         img, mask = adjustData(img, mask, list_of_categories)
+        if image_color_mode == "grayscale":
+            img = img.astype(np.uint8)
         yield (img, mask)
 
 
@@ -158,12 +166,19 @@ def testGenerator(test_path_str, num_image=0, target_size=(256, 256), flag_multi
         test_images.append(png)
     test_images.sort()
     for png in test_images:
-        img = io.imread(str(png), as_gray=as_gray)
-        img = rgba2rgb(img)
-        img = img  # / 255.
-        img = trans.resize(img, target_size)
+        # img = cv2.imread(str(png), cv2.IMREAD_GRAYSCALE)
+        img = io.imread(str(png))
+        if not as_gray:
+            img = rgba2rgb(img)
+        else:
+            img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+
+        img = cv2.resize(img, (target_size[1], target_size[0]))
         # img = np.reshape(img, img.shape + (1,)) if (not flag_multi_class) else img
-        img = np.reshape(img, (1,) + img.shape)
+        if not as_gray:
+            img = np.reshape(img, (1,) + img.shape)
+        else:
+            img = np.reshape(img, (1,) + img.shape + (1,))
         yield img
 
         if num_image != 0:
@@ -172,7 +187,8 @@ def testGenerator(test_path_str, num_image=0, target_size=(256, 256), flag_multi
                 break
 
 
-def geneTrainNpy(image_path, mask_path, flag_multi_class=False, num_class=2, image_prefix="image", mask_prefix="mask",
+def geneTrainNpy(image_path, mask_path, flag_multi_class=False, num_class=2, image_prefix="image",
+                 mask_prefix="mask",
                  image_as_gray=True, mask_as_gray=True):
     image_name_arr = glob.glob(os.path.join(image_path, "%s*.png" % image_prefix))
     image_arr = []
@@ -180,7 +196,8 @@ def geneTrainNpy(image_path, mask_path, flag_multi_class=False, num_class=2, ima
     for index, item in enumerate(image_name_arr):
         img = io.imread(item, as_gray=image_as_gray)
         img = np.reshape(img, img.shape + (1,)) if image_as_gray else img
-        mask = io.imread(item.replace(image_path, mask_path).replace(image_prefix, mask_prefix), as_gray=mask_as_gray)
+        mask = io.imread(item.replace(image_path, mask_path).replace(image_prefix, mask_prefix),
+                         as_gray=mask_as_gray)
         mask = np.reshape(mask, mask.shape + (1,)) if mask_as_gray else mask
         img, mask = adjustData(img, mask, flag_multi_class, num_class)
         image_arr.append(img)
@@ -211,28 +228,83 @@ def predictionToMask(list_of_categories, img):
     return img_out
 
 
+def combine_images(images: list):
+    if len(images) == 0:
+        return None
+    if len(images) == 1:
+        return images[0]
+    result_image = images[0]
+    for i in range(1, len(images)):
+        result_image = cv2.hconcat([result_image, images[i]])
+
+    return result_image
+
+
 def saveResult(save_path, test_path_str, npyfile, list_of_categories):
     original_images = []
     for png in Path(test_path_str).glob("*.png"):
         original_images.append(png)
     original_images.sort()
+    images_processed = []
+    current_index = 0
     for i, item in enumerate(npyfile):
         org_path = original_images[i]
-        org_image = io.imread(str(org_path), as_gray=True)
-        org_image = trans.resize(org_image, item.shape)
-        item = cv2.blur(item, (20, 20))
-        img = predictionToMask(list_of_categories, item)
-        img = img * 255
+        org_image = cv2.imread(str(org_path), cv2.IMREAD_COLOR)
+        org_image = cv2.resize(org_image, dsize=(item.shape[1], item.shape[0]))
+        # item = cv2.blur(item, (5, 5))
+
+        threshed_item = adaptive_threshold(item)
+        o_th_item = otsu_filter(item)
+        img = item_to_mask(item, list_of_categories)
+        img_stack = item
+        for img_p in images_processed:
+            img_b = cv2.blur(img_p, (13, 13))
+            img_stack = img_stack + np.reshape(img_b, img_stack.shape)
+        img_stack = img_stack / (len(images_processed) + 1)
+        img_stack = item_to_mask(img_stack, list_of_categories)
+        if len(images_processed) == 2:
+            images_processed.pop(0)
+        images_processed.append(item)
+        # images_processed.insert(current_index, item)
+        # current_index = (current_index + 1) % 1
+
         img_item = item * 255
-        org_image = org_image * 255
-        img_uint8 = img.astype(np.uint8)
+        org_image = cv2.cvtColor(org_image, cv2.COLOR_BGR2RGB)
         img_item_uint8 = img_item.astype(np.uint8)
-        # new_img = np.concatenate(np.concatenate((org_image, img, ), axis=1), img_item, axis=1)
-        new_img = cv2.hconcat([org_image, img])
-        new_img = new_img.astype(np.uint8)
-        # io.imsave(os.path.join(save_path, "%d_predict_threshold.png" % i), img_uint8)
-        io.imsave(os.path.join(save_path, "%d_predict_grayscale.png" % i), img_item_uint8)
-        io.imsave(os.path.join(save_path, "%d_predict_all.png" % i), new_img)
+        img_item_uint8 = cv2.merge([img_item_uint8, img_item_uint8, img_item_uint8])
+
+        combined_img = combine_images([org_image, img, img_item_uint8, threshed_item, o_th_item, img_stack])
+        io.imsave(os.path.join(save_path, "%d_predict_all.png" % i), combined_img)
+
+
+def item_to_mask(item, list_of_categories):
+    img = predictionToMask(list_of_categories, item)
+    img = img * 255
+    img = cv2.merge([img, img, img])
+    return img.astype(np.uint8)
+
+
+def otsu_filter(item):
+    threshed_item = item * 255
+    # threshed_item = cv2.merge([threshed_item, threshed_item, threshed_item])
+    threshed_item = threshed_item.astype(np.uint8)
+    blur = cv2.GaussianBlur(threshed_item, (5, 5), 0)
+    ret3, th3 = cv2.threshold(blur, 127, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    th3 = cv2.merge([th3, th3, th3])
+    return th3
+
+
+def adaptive_threshold(item):
+    threshed_item = item * 255
+    # threshed_item = cv2.merge([threshed_item, threshed_item, threshed_item])
+    threshed_item = threshed_item.astype(np.uint8)
+    threshed_item = cv2.medianBlur(threshed_item, 9)
+    # threshed_item = cv2.adaptiveThreshold(threshed_item, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11,
+    #                                       2)
+    threshed_item = cv2.adaptiveThreshold(threshed_item, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, 7,
+                                          2)
+    threshed_item = cv2.merge([threshed_item, threshed_item, threshed_item])
+    return threshed_item
 
 
 if __name__ == '__main__':
