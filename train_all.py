@@ -76,6 +76,10 @@ if __name__ == '__main__':
                         action='store_true')  # If we only want to evaluate a model.
     parser.add_argument("--cpu",
                         action='store_true')  # If we only want to evaluate a model.
+    parser.add_argument("--skip",
+                        default=0,
+                        type=int,
+                        help="How many models to skip")
     args = parser.parse_args()
 
     # Hard-coded values
@@ -90,7 +94,11 @@ if __name__ == '__main__':
                     (7, 9 * 2 * 2 * 2 * 2 * 2, 16 * 2 * 2 * 2 * 2 * 2, 1),
                     (2, 9 * 2 * 2 * 2 * 2 * 2 * 2, 16 * 2 * 2 * 2 * 2 * 2 * 2, 1)
                     ]
+    count = 0
     for config in train_config:
+        count = count + 1
+        if count <= args.skip:
+            continue
         batch_size, image_height, image_width, image_channels = config
         print("Starting on:", str(config))
         input_shape = (batch_size, image_height, image_width, image_channels)
