@@ -67,12 +67,14 @@ def test_model(model: Model,
                list_of_categories: list,
                as_gray: bool,
                test_folder: Path,
-               result_folder: Path):
+               result_folder: Path,
+               image_type: str):
     testGene = testGenerator(test_path_str=str(Path(test_folder, "images_sorted/images")),
                              num_image=0,
                              target_size=target_size,
                              flag_multi_class=len(list_of_categories) > 1,
-                             as_gray=as_gray)
+                             as_gray=as_gray,
+                             image_type=image_type)
 
     results = model.predict(x=testGene,
                             batch_size=batch_size,
@@ -81,7 +83,9 @@ def test_model(model: Model,
     saveResult(save_path=str(result_folder),
                test_path_str=str(Path(test_folder, "images_sorted/images")),
                npyfile=results,
-               list_of_categories=list_of_categories)
+               list_of_categories=list_of_categories,
+               image_type=image_type,
+               as_gray=as_gray)
 
 
 if __name__ == '__main__':

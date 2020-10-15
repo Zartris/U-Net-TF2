@@ -10,10 +10,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import skimage.io as io
 import skimage.transform as trans
+from scipy import ndimage as ndi
+from skimage import morphology
+
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
 Land = [221, 250, 244]
-Water = [173, 141, 224]
+Water = [234, 165, 163]
 Ship = [114, 119, 232]
 Uncategorised = [0, 0, 0]
 
@@ -88,7 +91,9 @@ def adjustData(img, mask, list_of_categories):
                 ),
                 mask[:, :, :, 2] == color[2])
         ] = 1
+        # show_image(np.array(new_mask))
         mask = np.array(new_mask)
+
     elif len(list_of_categories) == len(COLOR_DICT):  # All classes are check so no uncategorised:
         new_mask = np.zeros((mask.shape[0], mask.shape[1], mask.shape[2], len(list_of_categories)))
         new_mask = fill_new_mask(mask, new_mask, list_of_categories)
@@ -158,11 +163,12 @@ def trainGenerator(batch_size, train_path, image_folder, mask_folder, aug_dict, 
         yield (img, mask)
 
 
-def testGenerator(test_path_str, num_image=0, target_size=(256, 256), flag_multi_class=False, as_gray=True):
+def testGenerator(test_path_str, num_image=0, target_size=(256, 256), flag_multi_class=False, as_gray=True,
+                  image_type="*.png"):
     test_path = Path(test_path_str)
     counter = 0
     test_images = []
-    for png in test_path.glob("*.png"):
+    for png in test_path.glob(image_type):
         test_images.append(png)
     test_images.sort()
     for png in test_images:
@@ -215,7 +221,7 @@ def labelVisualize(num_class, color_dict, img):
     return img_out
 
 
-def predictionToMask(list_of_categories, img):
+def predictionToMask(list_of_categories, img, inv=False):
     # img = np.argmax(img, axis=2) if len(img.shape) == 3 else img
     if len(list_of_categories) > 1:
         img = np.argmax(img, axis=2)
@@ -224,7 +230,11 @@ def predictionToMask(list_of_categories, img):
             img_out[img == i] = COLOR_DICT[category]
     else:
         img_out = np.zeros(img.shape)
-        img_out[img > 0.5] = 1
+        if inv:
+            img_out[img <= 0.5] = 1
+        else:
+            img_out[img > 0.5] = 1
+
     return img_out
 
 
@@ -240,22 +250,27 @@ def combine_images(images: list):
     return result_image
 
 
-def saveResult(save_path, test_path_str, npyfile, list_of_categories):
+def saveResult(save_path, test_path_str, npyfile, list_of_categories, image_type, as_gray):
     original_images = []
-    for png in Path(test_path_str).glob("*.png"):
+    for png in Path(test_path_str).glob(image_type):
         original_images.append(png)
     original_images.sort()
     images_processed = []
     current_index = 0
     for i, item in enumerate(npyfile):
         org_path = original_images[i]
-        org_image = cv2.imread(str(org_path), cv2.IMREAD_COLOR)
+        if as_gray:
+            org_image = cv2.imread(str(org_path), cv2.IMREAD_GRAYSCALE)
+            org_image = cv2.merge([org_image, org_image, org_image])
+        else:
+            org_image = cv2.imread(str(org_path), cv2.IMREAD_COLOR)
         org_image = cv2.resize(org_image, dsize=(item.shape[1], item.shape[0]))
         # item = cv2.blur(item, (5, 5))
 
         threshed_item = adaptive_threshold(item)
         o_th_item = otsu_filter(item)
         img = item_to_mask(item, list_of_categories)
+        fill_holes = item_to_mask_fill_holse(item, list_of_categories)
         img_stack = item
         for img_p in images_processed:
             img_b = cv2.blur(img_p, (13, 13))
@@ -273,8 +288,20 @@ def saveResult(save_path, test_path_str, npyfile, list_of_categories):
         img_item_uint8 = img_item.astype(np.uint8)
         img_item_uint8 = cv2.merge([img_item_uint8, img_item_uint8, img_item_uint8])
 
-        combined_img = combine_images([org_image, img, img_item_uint8, threshed_item, o_th_item, img_stack])
+        combined_img = combine_images([org_image, img, fill_holes, img_item_uint8, threshed_item, o_th_item, img_stack])
+        print("saving:", os.path.join(save_path, "%d_predict_all.png" % i))
         io.imsave(os.path.join(save_path, "%d_predict_all.png" % i), combined_img)
+
+
+def item_to_mask_fill_holse(item, list_of_categories):
+    img = predictionToMask(list_of_categories, item, inv=True)
+    img = np.reshape(img, (img.shape[0], img.shape[1])).astype(np.bool)
+    img = morphology.remove_small_objects(img, min_size=100)
+    img = morphology.binary_dilation(img)
+    img = ndi.binary_fill_holes(img, structure=morphology.disk(5))
+    img = img * 255
+    img = cv2.merge([img, img, img])
+    return img.astype(np.uint8)
 
 
 def item_to_mask(item, list_of_categories):

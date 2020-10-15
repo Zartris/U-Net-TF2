@@ -5,6 +5,7 @@ import tensorflow as tf
 from data import *
 from model_functions import train_model, test_model
 from models.UNetModel import UNetBinary
+from scipy import ndimage as ndi
 
 
 def rm_tree(pth):
@@ -41,10 +42,10 @@ if __name__ == '__main__':
                         default=0,
                         type=int)  # The seed for testing
     parser.add_argument("--epochs",
-                        default=1000,
+                        default=5,
                         type=int)  # Number of episodes to train for
     parser.add_argument("--steps_per_epoch",
-                        default=1000,
+                        default=100,
                         type=int)  # number of batches trained on per epoch call
     parser.add_argument("--batch_size",
                         default=4,
@@ -62,7 +63,7 @@ if __name__ == '__main__':
                              "So a tip is to find the aspect ration you need and mulitply until you have a sufficient height\\"
                              "example: So 4*2*2*2*2*2*2*2 = 512, 3*2*2*2*2*2*2*2=384")  # image height
     parser.add_argument("--image_channels",
-                        default=3,
+                        default=1,
                         type=int,
                         help="1= grayscale, 3=rgb, 4=rgba")  # image channels
     parser.add_argument("--lr",
@@ -76,8 +77,11 @@ if __name__ == '__main__':
                         action='store_true')  # If we only want to evaluate a model.
     parser.add_argument("--cpu",
                         action='store_true')  # If we only want to evaluate a model.
-    args = parser.parse_args()
+    parser.add_argument("--jpg",
+                        action='store_true')  # If we only want to evaluate a model.
 
+    args = parser.parse_args()
+    image_type = "*.jpg" if args.jpg else "*.png"
     # Hard-coded values
     load_model = True
     categories = ["water"]
@@ -89,14 +93,14 @@ if __name__ == '__main__':
 
     as_gray = args.image_channels == 1
     if as_gray:
-        model_name = 'unet' + "_" + str(args.image_width) + "_" + str(args.image_height) + '_grayscale_binary.hdf5'
+        model_name = 'unet' + "_" + str(args.image_width) + "_" + str(args.image_height) + '_grayscale_binary_test.hdf5'
     else:
-        model_name = 'unet' + "_" + str(args.image_width) + "_" + str(args.image_height) + '_rgb_binary.hdf5'
+        model_name = 'unet' + "_" + str(args.image_width) + "_" + str(args.image_height) + '_rgb_binary_test.hdf5'
 
     # DATA PATH
     current_dir = os.getcwd()
 
-    data_folder = Path(current_dir, "..", "Segmentation_Data")
+    data_folder = Path(current_dir, "..", "Segmentation_Data","train2")
     train_folder = Path(data_folder, "train")
     test_folder = Path(data_folder, "test")
 
@@ -112,10 +116,10 @@ if __name__ == '__main__':
         checkpoint_dir.mkdir(parents=True)
 
     # Choose an optimizer and loss function for training:
-    loss_object = tf.keras.losses.BinaryCrossentropy(label_smoothing=0.1)
-    optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)
-    # loss_object = tf.keras.losses.MeanSquaredError()
-    # optimizer = tf.keras.optimizers.RMSprop(learning_rate=args.lr)
+    # loss_object = tf.keras.losses.BinaryCrossentropy(label_smoothing=0.1)
+    # optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)
+    loss_object = tf.keras.losses.MeanSquaredError()
+    optimizer = tf.keras.optimizers.RMSprop(learning_rate=args.lr)
 
     # Create model:
     model = UNetBinary()
@@ -156,7 +160,8 @@ if __name__ == '__main__':
                        list_of_categories=categories,
                        as_gray=as_gray,
                        test_folder=test_folder,
-                       result_folder=result_folder)
+                       result_folder=result_folder,
+                       image_type=image_type)
     else:
         if not args.eval:  # Training
             model = train_model(model=model,
@@ -177,4 +182,5 @@ if __name__ == '__main__':
                    list_of_categories=categories,
                    as_gray=as_gray,
                    test_folder=test_folder,
-                   result_folder=result_folder)
+                   result_folder=result_folder,
+                   image_type=image_type)

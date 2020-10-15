@@ -80,7 +80,10 @@ if __name__ == '__main__':
                         default=0,
                         type=int,
                         help="How many models to skip")
+    parser.add_argument("--jpg",
+                        action='store_true')  # If we only want to evaluate a model.
     args = parser.parse_args()
+    image_type = "*.jpg" if args.jpg else "*.png"
 
     # Hard-coded values
     load_model = True
@@ -105,6 +108,7 @@ if __name__ == '__main__':
         target_size = (image_height, image_width)
 
         as_gray = image_channels == 1
+
         if as_gray:
             model_name = 'unet' + "_" + str(image_width) + "_" + str(image_height) + '_grayscale_binary.hdf5'
         else:
@@ -115,7 +119,7 @@ if __name__ == '__main__':
 
         data_folder = Path(current_dir, "..", "Segmentation_Data")
         train_folder = Path(data_folder, "train")
-        test_folder = Path(data_folder, "test")
+        test_folder = Path(data_folder, "test_rgb")
 
         tensorboard_path = Path(data_folder, "tensorboard")
 
@@ -129,10 +133,10 @@ if __name__ == '__main__':
             checkpoint_dir.mkdir(parents=True)
 
         # Choose an optimizer and loss function for training:
-        loss_object = tf.keras.losses.BinaryCrossentropy(label_smoothing=0.1)
-        optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)
-        # loss_object = tf.keras.losses.MeanSquaredError()
-        # optimizer = tf.keras.optimizers.RMSprop(learning_rate=args.lr)
+        # loss_object = tf.keras.losses.BinaryCrossentropy(label_smoothing=0.1)
+        # optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)
+        loss_object = tf.keras.losses.MeanSquaredError()
+        optimizer = tf.keras.optimizers.RMSprop(learning_rate=args.lr)
 
         # Create model:
         model = UNetBinary()
@@ -157,7 +161,7 @@ if __name__ == '__main__':
                 if not args.eval:  # Training
                     model = train_model(model=model,
                                         target_size=target_size,
-                                        batch_size=batch_size,
+                                        batch_size=args.batch_size,
                                         list_of_categories=categories,
                                         train_epoch=args.epochs,
                                         steps_per_epoch=args.steps_per_epoch,
@@ -169,16 +173,17 @@ if __name__ == '__main__':
                 # else just eval
                 test_model(model=model,
                            target_size=target_size,
-                           batch_size=batch_size,
+                           batch_size=args.batch_size,
                            list_of_categories=categories,
                            as_gray=as_gray,
                            test_folder=test_folder,
-                           result_folder=result_folder)
+                           result_folder=result_folder,
+                           image_type=image_type)
         else:
             if not args.eval:  # Training
                 model = train_model(model=model,
                                     target_size=target_size,
-                                    batch_size=batch_size,
+                                    batch_size=args.batch_size,
                                     list_of_categories=categories,
                                     train_epoch=args.epochs,
                                     steps_per_epoch=args.steps_per_epoch,
@@ -190,8 +195,9 @@ if __name__ == '__main__':
             # else just eval
             test_model(model=model,
                        target_size=target_size,
-                       batch_size=batch_size,
+                       batch_size=args.batch_size,
                        list_of_categories=categories,
                        as_gray=as_gray,
                        test_folder=test_folder,
-                       result_folder=result_folder)
+                       result_folder=result_folder,
+                       image_type=image_type)
