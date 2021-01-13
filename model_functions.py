@@ -5,7 +5,6 @@ from tensorflow.keras.models import Model
 from tensorflow.python.keras.callbacks import ModelCheckpoint
 
 from data import *
-from utils.tensorboard import ModelDiagonoser, LogConfusionMatrix
 
 
 def generate_callbacks(checkpoint_path: Path, tensorboard_path: Path, early_stop_number: int, evalGene):
@@ -30,7 +29,7 @@ def train_model(model: Model,
                 steps_per_epoch: int,
                 validation_split: float,
                 train_folder: Path,
-                test_folder: Path,
+                val_folder: Path,
                 checkpoint_path: Path,
                 tensorboard_path: Path,
                 as_gray=False,
@@ -57,7 +56,7 @@ def train_model(model: Model,
                                list_of_categories=list_of_categories,
                                save_to_dir=None,
                                target_size=target_size)
-    evalGene = evalGenerator(test_path_str=str(Path(test_folder, "images_sorted")),
+    evalGene = evalGenerator(test_path_str=str(Path(val_folder, "images_sorted")),
                              list_of_categories=list_of_categories,
                              num_image=0,
                              target_size=target_size,
@@ -71,6 +70,8 @@ def train_model(model: Model,
               steps_per_epoch=steps_per_epoch,
               epochs=train_epoch,
               verbose=1,
+              validation_data=evalGene,
+              validation_steps=40,
               callbacks=callbacks)
     return model
 

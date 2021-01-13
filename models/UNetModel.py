@@ -2,6 +2,7 @@
 ## https://www.kaggle.com/advaitsave/tensorflow-2-nuclei-segmentation-unet/notebook
 ## https://www.kaggle.com/keegil/keras-u-net-starter-lb-0-277
 
+import tensorflow as tf
 from tensorflow.keras import Sequential
 from tensorflow.keras.layers import Conv2D, Conv2DTranspose, BatchNormalization
 from tensorflow.keras.layers import Dropout, Lambda
@@ -101,7 +102,7 @@ class UNet(Model):
             Dropout(0.1),
             Conv2D(64, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same'),
             BatchNormalization(),
-            Conv2D(nclasses, (1, 1), activation='softmax')
+            Conv2D(nclasses, (1, 1), activation='softmax', dtype=tf.float32)
         ])
 
     def call(self, inputs, training=False, **kwargs):
@@ -137,6 +138,7 @@ class UNetBinary(Model):
     def __init__(self):
         super(UNetBinary, self).__init__()
         # Build U-Net model
+
         self.prepare = Lambda(lambda x: x / 255)
 
         self.block1 = Sequential([
@@ -318,7 +320,7 @@ class UNetSmall(Model):
             Dropout(0.1),
             Conv2D(64, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same'),
             BatchNormalization(),
-            Conv2D(nclasses, (1, 1), activation='softmax')
+            Conv2D(nclasses, (1, 1), activation='softmax', dtype=tf.float32)
         ], name='up3')
 
     def call(self, inputs, training=False, **kwargs):
@@ -329,7 +331,7 @@ class UNetSmall(Model):
 
         down1 = self.down1(inputs)
         down2 = self.down2(down1)
-        down3 = self.down2(down2)
+        down3 = self.down3(down2)
         bottom = self.bottom(down3)
         concat = concatenate([bottom, down3])
         up1 = self.up1(concat)

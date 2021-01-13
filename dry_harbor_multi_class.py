@@ -5,7 +5,7 @@ import tensorflow as tf
 
 from data import *
 from model_functions import train_model, test_model
-from models.UNetModel import UNetBinary, UNetSmall
+from models.UNetModel import UNetBinary, UNetSmall, UNet
 
 
 def rm_tree(pth):
@@ -55,7 +55,7 @@ if __name__ == '__main__':
                         default=500,
                         type=int)  # number of batches trained on per epoch call
     parser.add_argument("--batch_size",
-                        default=25,
+                        default=3,
                         type=int)  # Batch size for training
     parser.add_argument("--image_width",
                         default=16 * 2 * 2 * 2 * 2,
@@ -70,11 +70,11 @@ if __name__ == '__main__':
                              "So a tip is to find the aspect ration you need and mulitply until you have a sufficient height\\"
                              "example: So 4*2*2*2*2*2*2*2 = 512, 3*2*2*2*2*2*2*2=384")  # image height
     parser.add_argument("--image_channels",
-                        default=1,
+                        default=3,
                         type=int,
                         help="1= grayscale, 3=rgb, 4=rgba")  # image channels
     parser.add_argument("--lr",
-                        default=0.02,
+                        default=1e-4,
                         type=float)  # Learning rate
     parser.add_argument("--early_stop",
                         default=5,
@@ -121,12 +121,16 @@ if __name__ == '__main__':
     target_size = (args.image_height, args.image_width)
 
     as_gray = args.image_channels == 1
+    small = True
     if as_gray:
         model_name = 'unet' + "_" + str(args.image_width) + "_" + str(
             args.image_height) + str(args.model_prefix) + '_grayscale_multi_small.hdf5'
-    else:
+    elif small:
         model_name = 'unet' + "_" + str(args.image_width) + "_" + str(args.image_height) + str(
             args.model_prefix) + '_rgb_multi_small.hdf5'
+    else:
+        model_name = 'unet' + "_" + str(args.image_width) + "_" + str(args.image_height) + str(
+            args.model_prefix) + '_rgb_multi_test123.hdf5'
 
     # DATA PATH
     current_dir = os.getcwd()
@@ -136,6 +140,7 @@ if __name__ == '__main__':
     # data_folder = Path("/media/zartris/VOID/code/python/Airsim/Segmentation_Data/dry_harbor")
     train_folder = Path(data_folder, "train")
     # test_folder = Path(data_folder, "test")
+    val_folder = Path(data_folder, "test")
     test_folder = Path(data_folder, "gazebo_sample_images")
     tensorboard_path = Path(data_folder, "tensorboard")
 
@@ -152,19 +157,24 @@ if __name__ == '__main__':
         tf.config.set_visible_devices([], 'GPU')
 
     # Choose an optimizer and loss function for training:
-    loss_object = tf.keras.losses.SparseCategoricalCrossentropy()
-    optimizer = tf.keras.optimizers.SGD(learning_rate=args.lr, momentum=0.9, decay=0.001)
+    loss_object = tf.keras.losses.CategoricalCrossentropy()
+    # optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)
+    optimizer = tf.keras.optimizers.SGD(learning_rate=0.02, momentum=0.9, decay=0.001)
+    optimizer = tf.keras.mixed_precision.experimental.LossScaleOptimizer(optimizer, "dynamic")
+
     # loss_object = tf.keras.losses.MeanSquaredError()
     # optimizer = tf.keras.optimizers.RMSprop(learning_rate=args.lr)
 
     # Create model:
     if nclasses == 1:
         model = UNetBinary()
-    else:
-        # model = UNet(nclasses=nclasses)
+    elif small:
         model = UNetSmall(nclasses=nclasses)
+    else:
+        model = UNet(nclasses=nclasses)
 
-    model.compile(optimizer=optimizer, loss=loss_object, metrics=['accuracy'])
+    model.compile(optimizer=optimizer, loss=loss_object,
+                  metrics=[tf.keras.metrics.CategoricalCrossentropy(), 'accuracy'])
     model.build(input_shape=input_shape)
 
     checkpoint_path = Path(checkpoint_dir, model_name)
@@ -201,7 +211,7 @@ if __name__ == '__main__':
                                     steps_per_epoch=args.steps_per_epoch,
                                     validation_split=validation_split,
                                     train_folder=train_folder,
-                                    test_folder=test_folder,
+                                    val_folder=val_folder,
                                     checkpoint_path=checkpoint_path,
                                     tensorboard_path=tensorboard_path,
                                     as_gray=as_gray,
@@ -233,7 +243,7 @@ if __name__ == '__main__':
                                 steps_per_epoch=args.steps_per_epoch,
                                 validation_split=validation_split,
                                 train_folder=train_folder,
-                                test_folder=test_folder,
+                                val_folder=val_folder,
                                 checkpoint_path=checkpoint_path,
                                 tensorboard_path=tensorboard_path,
                                 as_gray=as_gray,

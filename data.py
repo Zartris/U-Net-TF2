@@ -176,10 +176,10 @@ def evalGenerator(test_path_str,
         # img = cv2.imread(str(png), cv2.IMREAD_GRAYSCALE)
         img = io.imread(str(png))
         mask = io.imread(str(lbl))
+        mask = rgba2rgb(mask)
 
         if not as_gray:
             img = rgba2rgb(img)
-            mask = rgba2rgb(mask)
         else:
             img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
 
@@ -190,6 +190,7 @@ def evalGenerator(test_path_str,
             mask = np.reshape(mask, (1,) + mask.shape)
         else:
             img = np.reshape(img, (1,) + img.shape + (1,))
+            mask = np.reshape(mask, (1,) + mask.shape)
         mask = mask.astype(np.uint8)
         img, mask = adjustData(img, mask, list_of_categories)
 
