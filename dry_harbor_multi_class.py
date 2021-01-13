@@ -5,7 +5,7 @@ import tensorflow as tf
 
 from data import *
 from model_functions import train_model, test_model
-from models.UNetModel import UNetBinary
+from models.UNetModel import UNetBinary, UNetSmall
 
 
 def rm_tree(pth):
@@ -28,6 +28,13 @@ def setup_gpus():
             print(e)
 
 
+def bgr_to_rgb(categories):
+    result = []
+    for (name, (B, G, R)) in categories:
+        result.append((name, (R, G, B)))
+    return result
+
+
 if __name__ == '__main__':
     # Note to aspect ratio : You want to keep aspect ratio of 4:3. And your network wants to divide it to 2 for a while.
     # So 4*2*2*2*2*2*2*2 = 512, 3*2*2*2*2*2*2*2=384
@@ -39,25 +46,25 @@ if __name__ == '__main__':
     # Input parameters:
     parser = argparse.ArgumentParser()
     parser.add_argument("--seed",
-                        default=0,
+                        default=5,
                         type=int)  # The seed for testing
     parser.add_argument("--epochs",
-                        default=5,
+                        default=100,
                         type=int)  # Number of episodes to train for
     parser.add_argument("--steps_per_epoch",
-                        default=100,
+                        default=500,
                         type=int)  # number of batches trained on per epoch call
     parser.add_argument("--batch_size",
-                        default=4,
+                        default=25,
                         type=int)  # Batch size for training
     parser.add_argument("--image_width",
-                        default=16 * 2 * 2 * 2 * 2 * 2,
+                        default=16 * 2 * 2 * 2 * 2,
                         type=int,
                         help="Your network wants to divide it to 2 for a while.\\"
                              "So a tip is to find the aspect ration you need and mulitply until you have a sufficient width\\"
                              "example: So 4*2*2*2*2*2*2*2 = 512, 3*2*2*2*2*2*2*2=384")  # image width
     parser.add_argument("--image_height",
-                        default=9 * 2 * 2 * 2 * 2 * 2,
+                        default=9 * 2 * 2 * 2 * 2,
                         type=int,
                         help="Your network wants to divide it to 2 for a while.\\"
                              "So a tip is to find the aspect ration you need and mulitply until you have a sufficient height\\"
@@ -67,8 +74,11 @@ if __name__ == '__main__':
                         type=int,
                         help="1= grayscale, 3=rgb, 4=rgba")  # image channels
     parser.add_argument("--lr",
-                        default=1e-4,
+                        default=0.02,
                         type=float)  # Learning rate
+    parser.add_argument("--early_stop",
+                        default=5,
+                        type=int)  # Learning rate
     parser.add_argument("--weight_decay",
                         default=1e-6)  # weight_decay
     parser.add_argument("--load_model_path",
@@ -79,12 +89,31 @@ if __name__ == '__main__':
                         action='store_true')  # If we only want to evaluate a model.
     parser.add_argument("--jpg",
                         action='store_true')  # If we only want to evaluate a model.
+    parser.add_argument("--model_prefix",
+                        default="",
+                        type=str)  # Learning rate
 
     args = parser.parse_args()
     image_type = "*.jpg" if args.jpg else "*.png"
+
     # Hard-coded values
     load_model = True
-    categories = ["water"]
+    # BGR
+    categories = [("sky", (207, 91, 108)),
+                  ("object", (239, 213, 155)),
+                  ("dock_side", (224, 141, 173)),
+                  ("floor", (244, 250, 221)),
+                  ("ship", (232, 119, 114)),
+                  ("unknown", (130, 219, 128))
+                  ]
+
+    # categories = [("water", (180, 130, 70)),
+    #               ("ship", (35, 142, 107)),
+    #               ("unknown", (81, 0, 81))]
+
+    # RGB
+    categories = bgr_to_rgb(categories)
+
     nclasses = len(categories)
     validation_split = 0.2
 
@@ -93,17 +122,21 @@ if __name__ == '__main__':
 
     as_gray = args.image_channels == 1
     if as_gray:
-        model_name = 'unet' + "_" + str(args.image_width) + "_" + str(args.image_height) + '_grayscale_binary_test.hdf5'
+        model_name = 'unet' + "_" + str(args.image_width) + "_" + str(
+            args.image_height) + str(args.model_prefix) + '_grayscale_multi_small.hdf5'
     else:
-        model_name = 'unet' + "_" + str(args.image_width) + "_" + str(args.image_height) + '_rgb_binary_test.hdf5'
+        model_name = 'unet' + "_" + str(args.image_width) + "_" + str(args.image_height) + str(
+            args.model_prefix) + '_rgb_multi_small.hdf5'
 
     # DATA PATH
     current_dir = os.getcwd()
 
-    data_folder = Path(current_dir, "..", "Segmentation_Data", "train2")
+    # data_folder = Path(current_dir, "..", "Segmentation_Data")
+    data_folder = Path("C:\\Users\\Jonas le Fevre\\Documents\\AirSim\\Dry_small\\combined")
+    # data_folder = Path("/media/zartris/VOID/code/python/Airsim/Segmentation_Data/dry_harbor")
     train_folder = Path(data_folder, "train")
-    test_folder = Path(data_folder, "test")
-
+    # test_folder = Path(data_folder, "test")
+    test_folder = Path(data_folder, "gazebo_sample_images")
     tensorboard_path = Path(data_folder, "tensorboard")
 
     result_folder = Path(data_folder, "result", model_name.split(".")[0])
@@ -115,14 +148,22 @@ if __name__ == '__main__':
     if not checkpoint_dir.exists():
         checkpoint_dir.mkdir(parents=True)
 
+    if args.cpu:
+        tf.config.set_visible_devices([], 'GPU')
+
     # Choose an optimizer and loss function for training:
-    # loss_object = tf.keras.losses.BinaryCrossentropy(label_smoothing=0.1)
-    # optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)
-    loss_object = tf.keras.losses.MeanSquaredError()
-    optimizer = tf.keras.optimizers.RMSprop(learning_rate=args.lr)
+    loss_object = tf.keras.losses.SparseCategoricalCrossentropy()
+    optimizer = tf.keras.optimizers.SGD(learning_rate=args.lr, momentum=0.9, decay=0.001)
+    # loss_object = tf.keras.losses.MeanSquaredError()
+    # optimizer = tf.keras.optimizers.RMSprop(learning_rate=args.lr)
 
     # Create model:
-    model = UNetBinary()
+    if nclasses == 1:
+        model = UNetBinary()
+    else:
+        # model = UNet(nclasses=nclasses)
+        model = UNetSmall(nclasses=nclasses)
+
     model.compile(optimizer=optimizer, loss=loss_object, metrics=['accuracy'])
     model.build(input_shape=input_shape)
 
@@ -139,8 +180,18 @@ if __name__ == '__main__':
         print("Loading old weights from:", str(checkpoint_path))
         model.load_weights(str(checkpoint_path))
 
+    data_gen_args = dict(rotation_range=0,
+                         width_shift_range=50,
+                         height_shift_range=50,
+                         shear_range=0,  # If semantic segmentation set these to 0
+                         zoom_range=0,  # If semantic segmentation set these to 0
+                         horizontal_flip=True,
+                         vertical_flip=True,
+                         fill_mode='nearest')
+    print(model.summary())
     if args.cpu:
         with tf.device('/cpu:0'):
+            print(tf.device)
             if not args.eval:  # Training
                 model = train_model(model=model,
                                     target_size=target_size,
@@ -150,9 +201,16 @@ if __name__ == '__main__':
                                     steps_per_epoch=args.steps_per_epoch,
                                     validation_split=validation_split,
                                     train_folder=train_folder,
+                                    test_folder=test_folder,
                                     checkpoint_path=checkpoint_path,
                                     tensorboard_path=tensorboard_path,
-                                    as_gray=as_gray)
+                                    as_gray=as_gray,
+                                    data_gen_args=data_gen_args,
+                                    early_stop_number=args.early_stop,
+                                    image_type=image_type)
+                print("Done training")
+
+            model.load_weights(str(checkpoint_path))
             # else just eval
             test_model(model=model,
                        target_size=target_size,
@@ -161,8 +219,11 @@ if __name__ == '__main__':
                        as_gray=as_gray,
                        test_folder=test_folder,
                        result_folder=result_folder,
-                       image_type=image_type)
+                       image_type=image_type,
+                       save_images=True,
+                       max_images_saved=0)
     else:
+        print(tf.device)
         if not args.eval:  # Training
             model = train_model(model=model,
                                 target_size=target_size,
@@ -172,9 +233,15 @@ if __name__ == '__main__':
                                 steps_per_epoch=args.steps_per_epoch,
                                 validation_split=validation_split,
                                 train_folder=train_folder,
+                                test_folder=test_folder,
                                 checkpoint_path=checkpoint_path,
                                 tensorboard_path=tensorboard_path,
-                                as_gray=as_gray)
+                                as_gray=as_gray,
+                                data_gen_args=data_gen_args,
+                                early_stop_number=args.early_stop,
+                                image_type=image_type)
+            print("Done training")
+        model.load_weights(str(checkpoint_path))
         # else just eval
         test_model(model=model,
                    target_size=target_size,
@@ -183,4 +250,6 @@ if __name__ == '__main__':
                    as_gray=as_gray,
                    test_folder=test_folder,
                    result_folder=result_folder,
-                   image_type=image_type)
+                   image_type=image_type,
+                   save_images=True,
+                   max_images_saved=0)

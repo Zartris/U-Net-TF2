@@ -7,14 +7,20 @@ from tensorflow.keras.layers import Conv2D, Conv2DTranspose, BatchNormalization
 from tensorflow.keras.layers import Dropout, Lambda
 from tensorflow.keras.layers import MaxPooling2D
 from tensorflow.keras.layers import concatenate
+from tensorflow.keras.mixed_precision import experimental as mixed_precision
 from tensorflow.keras.models import Model
 
 
 class UNet(Model):
     def __init__(self, nclasses=1):
         super(UNet, self).__init__()
+
+        policy = mixed_precision.Policy('mixed_float16')
+        mixed_precision.set_policy(policy)
+
         # Build U-Net model
         # self.prepare = Lambda(lambda x: x / 255)
+        self.prepare = Lambda(lambda x: x / 255)
 
         self.block1 = Sequential([
             Conv2D(64, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same'),
@@ -102,6 +108,7 @@ class UNet(Model):
         # Preparing input:
         # prep_inputs = self.prepare(inputs)
         # Going down the U
+        inputs = self.prepare(inputs)
 
         block1 = self.block1(inputs)
         block2 = self.block2(block1)
@@ -118,6 +125,11 @@ class UNet(Model):
         block8 = self.block8(concat)
         concat = concatenate([block1, block8])
         output = self.block9(concat)
+
+        # block6 = self.block6(block5)
+        # block7 = self.block7(block6)
+        # block8 = self.block8(block7)
+        # output = self.block9(block8)
         return output
 
 
@@ -232,3 +244,97 @@ class UNetBinary(Model):
         concat = concatenate([block1, block8])
         output = self.block9(concat)
         return output
+
+
+class UNetSmall(Model):
+    def __init__(self, nclasses=1):
+        super(UNetSmall, self).__init__()
+
+        policy = mixed_precision.Policy('mixed_float16')
+        mixed_precision.set_policy(policy)
+
+        # Build U-Net model
+        # self.prepare = Lambda(lambda x: x / 255)
+        self.prepare = Lambda(lambda x: x / 255)
+
+        self.down1 = Sequential([
+            Conv2D(64, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same'),
+            BatchNormalization(),
+            Dropout(0.1),
+            Conv2D(64, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same'),
+            BatchNormalization(),
+        ], name="down1")
+        # Down
+        self.down2 = Sequential([
+            MaxPooling2D((2, 2)),  # Is from 1. u-block
+            Conv2D(128, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same'),
+            BatchNormalization(),
+            Dropout(0.1),
+            Conv2D(128, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same'),
+            BatchNormalization()
+        ], name="down2")
+
+        # bottom
+        self.down3 = Sequential([
+            MaxPooling2D(pool_size=(2, 2)),  # Is from 2. u-block
+            Conv2D(256, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same'),
+            BatchNormalization(),
+            Dropout(0.2),
+            Conv2D(256, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same'),
+            BatchNormalization(),
+        ], name='down3')
+
+        self.bottom = Sequential([
+            MaxPooling2D((2, 2)),  # Is from 3. u-block
+            Conv2D(512, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same'),
+            BatchNormalization(),
+            Dropout(0.2),
+            Conv2D(512, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same'),
+            BatchNormalization(),
+            Conv2DTranspose(256, (2, 2), strides=(2, 2), padding='same')
+        ], name='bottom')
+
+        self.up1 = Sequential([
+            Conv2D(256, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same'),
+            BatchNormalization(),
+            Dropout(0.2),
+            Conv2D(256, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same'),
+            BatchNormalization(),
+            Conv2DTranspose(128, (2, 2), strides=(2, 2), padding='same')
+        ], name='up1')
+
+        self.up2 = Sequential([
+            Conv2D(128, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same'),
+            BatchNormalization(),
+            Dropout(0.2),
+            Conv2D(128, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same'),
+            BatchNormalization(),
+            Conv2DTranspose(64, (2, 2), strides=(2, 2), padding='same')
+        ], name='up2')
+
+        self.up3 = Sequential([
+            Conv2D(64, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same'),
+            BatchNormalization(),
+            Dropout(0.1),
+            Conv2D(64, (3, 3), activation='relu', kernel_initializer='he_normal', padding='same'),
+            BatchNormalization(),
+            Conv2D(nclasses, (1, 1), activation='softmax')
+        ], name='up3')
+
+    def call(self, inputs, training=False, **kwargs):
+        # Preparing input:
+        # prep_inputs = self.prepare(inputs)
+        # Going down the U
+        inputs = self.prepare(inputs)
+
+        down1 = self.down1(inputs)
+        down2 = self.down2(down1)
+        down3 = self.down2(down2)
+        bottom = self.bottom(down3)
+        concat = concatenate([bottom, down3])
+        up1 = self.up1(concat)
+        concat = concatenate([up1, down2])
+        up2 = self.up2(concat)
+        concat = concatenate([up2, down1])
+        up3 = self.up3(concat)
+        return up3

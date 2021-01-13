@@ -5,17 +5,20 @@ from tensorflow.keras.models import Model
 from tensorflow.python.keras.callbacks import ModelCheckpoint
 
 from data import *
+from utils.tensorboard import ModelDiagonoser, LogConfusionMatrix
 
 
-def generate_callbacks(checkpoint_path: Path, tensorboard_path: Path, trainGene):
-    early_stopping_callback = tf.keras.callbacks.EarlyStopping(monitor='loss', patience=3)
+def generate_callbacks(checkpoint_path: Path, tensorboard_path: Path, early_stop_number: int, evalGene):
+    early_stopping_callback = tf.keras.callbacks.EarlyStopping(monitor='loss', patience=early_stop_number)
     log_dir = Path(tensorboard_path, "fit", datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
+    # log_image_dir = Path(log_dir,"images")
+    # log_image_dir.mkdir(parents=True)
     tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=str(log_dir), histogram_freq=1)
     save_model_callback = ModelCheckpoint(filepath=str(checkpoint_path),
                                           monitor='loss',
-                                          verbose=1,
+                                          verbose=2,
                                           save_best_only=True)
-    # tensorboard_img_callback = ModelDiagonoser(trainGene, 1, 10, tensorboard_path, 1)
+    # tensorboard_img_callback = ModelDiagonoser(evalGene, 1, 25, str(log_image_dir), 1, 200)
     return [save_model_callback, tensorboard_callback, early_stopping_callback]
 
 
@@ -27,17 +30,22 @@ def train_model(model: Model,
                 steps_per_epoch: int,
                 validation_split: float,
                 train_folder: Path,
+                test_folder: Path,
                 checkpoint_path: Path,
                 tensorboard_path: Path,
-                as_gray=False):
-    data_gen_args = dict(rotation_range=90,
-                         width_shift_range=0.05,
-                         height_shift_range=0.05,
-                         shear_range=0.05,
-                         zoom_range=0.05,
-                         horizontal_flip=True,
-                         vertical_flip=True,
-                         fill_mode='nearest')
+                as_gray=False,
+                data_gen_args=None,
+                early_stop_number=5,
+                image_type='*.png'):
+    if data_gen_args == None:
+        data_gen_args = dict(rotation_range=90,
+                             width_shift_range=0.05,
+                             height_shift_range=0.05,
+                             shear_range=0.05,
+                             zoom_range=0.05,
+                             horizontal_flip=True,
+                             vertical_flip=True,
+                             fill_mode='nearest')
 
     trainGene = trainGenerator(batch_size=batch_size,
                                train_path=str(Path(train_folder, "images_sorted")),
@@ -49,14 +57,20 @@ def train_model(model: Model,
                                list_of_categories=list_of_categories,
                                save_to_dir=None,
                                target_size=target_size)
-
+    evalGene = evalGenerator(test_path_str=str(Path(test_folder, "images_sorted")),
+                             list_of_categories=list_of_categories,
+                             num_image=0,
+                             target_size=target_size,
+                             as_gray=as_gray,
+                             image_type=image_type)
     # Callbacks:
-    callbacks = generate_callbacks(checkpoint_path, tensorboard_path, trainGene)
+    callbacks = generate_callbacks(checkpoint_path, tensorboard_path, early_stop_number, evalGene)
 
     model.fit(x=trainGene,
               batch_size=batch_size,
               steps_per_epoch=steps_per_epoch,
               epochs=train_epoch,
+              verbose=1,
               callbacks=callbacks)
     return model
 
@@ -68,24 +82,57 @@ def test_model(model: Model,
                as_gray: bool,
                test_folder: Path,
                result_folder: Path,
-               image_type: str):
-    testGene = testGenerator(test_path_str=str(Path(test_folder, "images_sorted/images")),
-                             num_image=0,
-                             target_size=target_size,
-                             flag_multi_class=len(list_of_categories) > 1,
-                             as_gray=as_gray,
-                             image_type=image_type)
+               image_type: str,
+               save_images=True,
+               max_images_saved=100):
+    tf.debugging.set_log_device_placement(True)
 
-    results = model.predict(x=testGene,
-                            batch_size=batch_size,
-                            verbose=1)
+    # evalGene = evalGenerator(test_path_str=str(Path(test_folder, "images_sorted")),
+    #                          list_of_categories=list_of_categories,
+    #                          num_image=0,
+    #                          target_size=target_size,
+    #                          as_gray=as_gray,
+    #                          image_type=image_type)
+    #
+    # eval_results = model.evaluate(x=evalGene,
+    #                               batch_size=1,
+    #                               verbose=1)
+    # print(eval_results)
 
-    saveResult(save_path=str(result_folder),
-               test_path_str=str(Path(test_folder, "images_sorted/images")),
-               npyfile=results,
-               list_of_categories=list_of_categories,
-               image_type=image_type,
-               as_gray=as_gray)
+    if save_images:
+        testGene = testGenerator(test_path_str=str(Path(test_folder, "images_sorted")),
+                                 num_image=max_images_saved,
+                                 target_size=target_size,
+                                 flag_multi_class=len(list_of_categories) > 1,
+                                 as_gray=as_gray,
+                                 image_type=image_type)
+        results = model.predict(x=testGene,
+                                batch_size=batch_size,
+                                verbose=1)
+        # # Dry harbor save:
+        DHsaveResult(save_path=str(result_folder),
+                     test_path_str=str(Path(test_folder, "images_sorted")),
+                     npyfile=results,
+                     list_of_categories=list_of_categories,
+                     image_type=image_type,
+                     as_gray=as_gray,
+                     add_gt=False)
+        # Harbor save:
+        # saveResult(save_path=str(result_folder),
+        #            test_path_str=str(Path(test_folder, "images_sorted/images")),
+        #            npyfile=results,
+        #            list_of_categories=list_of_categories,
+        #            image_type=image_type,
+        #            as_gray=as_gray)
+
+        # Segmentation predict:
+        # Segmentation_help_saveResult(save_path=Path("/home/zartris/Downloads/rosbag/img_labels/temp/images_sorted/full"),
+        #                              test_path_str=str(Path(test_folder, "images_sorted")),
+        #                              npyfile=results,
+        #                              list_of_categories=list_of_categories,
+        #                              image_type=image_type,
+        #                              as_gray=as_gray,
+        #                              add_gt=True)
 
 
 if __name__ == '__main__':

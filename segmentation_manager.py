@@ -8,7 +8,7 @@ import skimage.io as io
 import tensorflow as tf
 
 from data import rgba2rgb
-from models.UNetModel import UNetBinary
+from models.UNetModel import UNetBinary, UNet
 
 
 class SegmentationManager(ABC):
@@ -50,8 +50,9 @@ class SegmentationManager(ABC):
 
 
 class UNetManager(SegmentationManager):
-    def __init__(self, input_shape, is_grayscale: bool, checkpoint_path: str, cpu=False):
+    def __init__(self, input_shape, is_grayscale: bool, checkpoint_path: str, cpu=False, number_of_classes=1):
         self.input_shape = input_shape
+        self.number_of_classes = number_of_classes
         super().__init__(is_grayscale, checkpoint_path, cpu)
 
     def run(self, image):
@@ -76,7 +77,10 @@ class UNetManager(SegmentationManager):
         return result
 
     def setup(self, checkpoint_path: Path):
-        self.model = UNetBinary()
+        if self.number_of_classes > 1:
+            self.model = UNet(nclasses=self.number_of_classes)
+        else:
+            self.model = UNetBinary()
 
         # Not used, but needed to compile
         loss_object = tf.keras.losses.MeanSquaredError()
